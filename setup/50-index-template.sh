@@ -29,6 +29,19 @@ JSON
 )"
 ok "Index template 'logs-nginx' created."
 
+log "Creating index template 'logs-kong' for Kong API gateway data streams..."
+es_check PUT "/_index_template/logs-kong" "$(cat <<'JSON'
+{
+  "index_patterns": ["logs-kong.*-*"],
+  "data_stream": {},
+  "priority": 200,
+  "composed_of": ["logs-settings", "logs-mappings"],
+  "_meta": { "description": "Kong API gateway http-log data streams (LogsDB, ILM-managed)" }
+}
+JSON
+)"
+ok "Index template 'logs-kong' created."
+
 log "Verifying a simulated index for 'logs-nginx.ingress-default'..."
 es POST "/_index_template/_simulate_index/logs-nginx.ingress-default" \
   | jq '{mode: .template.settings.index.mode, ilm: .template.settings.index.lifecycle.name}'

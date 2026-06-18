@@ -1,0 +1,6 @@
+# Run two isolated pipelines so ingress and Kong logs never share inputs/filters/outputs.
+# Mounted at /usr/share/logstash/config/pipelines.yml (overrides the default single pipeline).
+- pipeline.id: ingress
+  path.config: "/usr/share/logstash/pipeline/ingress-nginx.conf"
+- pipeline.id: kong
+  path.config: "/usr/share/logstash/pipeline/kong-http-log.conf"

@@ -79,6 +79,7 @@ Kibana: <http://localhost:5601> (user `elastic`, password from `.env`).
 |---|---|
 | Source: ship ingress logs off Kubernetes | `shippers/filebeat-daemonset.yaml` |
 | Logstash: parse ingress logs | `compose/logstash/pipeline/ingress-nginx.conf`, `test/parse-ingress-test.sh` |
+| Ingest Kong API gateway logs | `compose/logstash/pipeline/kong-http-log.conf` (port 8081, `logs-kong.proxy` data stream) |
 | Install on Ubuntu | `ubuntu/install-elastic-ubuntu.sh` |
 | LogsDB + index templates | `setup/40-component-templates.sh`, `setup/50-index-template.sh` |
 | ILM (replaces Curator) + tiers | `setup/30-ilm-policy.sh`, `day2/ilm-explain.sh` |

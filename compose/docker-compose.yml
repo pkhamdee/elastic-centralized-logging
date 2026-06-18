@@ -203,9 +203,11 @@ services:
     volumes:
       - certs:/usr/share/logstash/config/certs
       - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logstash/config/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
     ports:
       - "5044:5044"
       - "8080:8080"
+      - "8081:8081"   # Kong http-log pipeline
     environment:
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - xpack.monitoring.enabled=false
