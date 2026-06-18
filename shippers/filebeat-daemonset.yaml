@@ -1,0 +1,109 @@
+# Filebeat DaemonSet: tail Kubernetes ingress-nginx access logs and forward them
+# to the centralized Logstash tier (or Kafka). One pod per node.
+#
+# Apply with: kubectl apply -f filebeat-daemonset.yaml
+# Point LOGSTASH_HOST (or the Kafka block) at your Ubuntu logging servers.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: logging
+data:
+  filebeat.yml: |
+    filebeat.autodiscover:
+      providers:
+        - type: kubernetes
+          node: ${NODE_NAME}
+          # Only ship ingress-nginx logs. Widen this condition for more sources.
+          templates:
+            - condition:
+                equals:
+                  kubernetes.namespace: "ingress-nginx"
+              config:
+                - type: container
+                  paths:
+                    - "/var/log/containers/*${data.kubernetes.container.id}.log"
+
+    processors:
+      - add_kubernetes_metadata:
+          host: ${NODE_NAME}
+          matchers:
+            - logs_path: { logs_path: "/var/log/containers/" }
+      # Keep the payload small: drop noisy default fields.
+      - drop_fields:
+          fields: ["ecs", "agent.ephemeral_id", "input"]
+          ignore_missing: true
+
+    # Primary output: Kafka buffer (durable, replayable). Recommended at scale.
+    output.kafka:
+      hosts: ["kafka-0.logging:9092", "kafka-1.logging:9092"]
+      topic: "ingress-logs"
+      required_acks: 1
+      compression: gzip
+
+    # Small-cluster alternative: send straight to Logstash (comment out Kafka above).
+    # output.logstash:
+    #   hosts: ["${LOGSTASH_HOST:logstash.logging:5044}"]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: filebeat
+  namespace: logging
+  labels: { app: filebeat }
+spec:
+  selector:
+    matchLabels: { app: filebeat }
+  template:
+    metadata:
+      labels: { app: filebeat }
+    spec:
+      serviceAccountName: filebeat
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: filebeat
+          image: docker.elastic.co/beats/filebeat:9.3.0
+          args: ["-c", "/etc/filebeat.yml", "-e"]
+          env:
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+          securityContext:
+            runAsUser: 0
+          resources:
+            limits:   { memory: 200Mi }
+            requests: { cpu: 100m, memory: 100Mi }
+          volumeMounts:
+            - { name: config,        mountPath: /etc/filebeat.yml, subPath: filebeat.yml, readOnly: true }
+            - { name: varlibdockercontainers, mountPath: /var/lib/docker/containers, readOnly: true }
+            - { name: varlog,        mountPath: /var/log, readOnly: true }
+            - { name: data,          mountPath: /usr/share/filebeat/data }
+      volumes:
+        - { name: config, configMap: { name: filebeat-config } }
+        - { name: varlibdockercontainers, hostPath: { path: /var/lib/docker/containers } }
+        - { name: varlog, hostPath: { path: /var/log } }
+        - { name: data, hostPath: { path: /var/lib/filebeat-data, type: DirectoryOrCreate } }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: filebeat, namespace: logging }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: filebeat }
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "nodes"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: filebeat }
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: filebeat
+subjects:
+  - kind: ServiceAccount
+    name: filebeat
+    namespace: logging

@@ -1,0 +1,4 @@
+# Local secrets and generated material — never commit
+compose/.env
+compose/certs/
+*.log
